@@ -39,13 +39,13 @@ I had originally wanted to use a custom flag passed to Jest to handle this, but 
 Etsy's test-running environment is complex enough that we use `jest.config.js` rather than specifying Jest setup options in a JSON file.
 
 To start, we needed a single source of truth for whether Jest was running in Preact mode or React mode. That can be seen here:
-```
+```js
 // <root>/jest-config/helpers/isPreact.js
 module.exports = process.env.PREACT === "1";
 ```
 
 And then in our `jest.config.js`, the actual code which handles most of the "magic":
-```
+```js
 // <root>/jest.config.js
 ...
 // Jest doesn't allow developers to write their own custom params for the CLI, so we need to specify this via
@@ -71,7 +71,7 @@ const preactAlias = shouldAliasPreact
 One of our explicit goals is that developers shouldn't have to worry about whether they are running in Preact or React mode. In order to accomplish that, they need to be able to use `import("react")` and have it work no matter the framework. Moreover, we wanted to make the Preact/React logic as invisible to the rest of the environment as possible. The original `alias` section comes from [the Preact docs](https://preactjs.com/guide/v10/getting-started#aliasing-in-webpack). Additionally, one of the necessary bits of [Enzyme setup](https://enzymejs.github.io/enzyme/#installation) is to use the proper "adapter" for your framework. Since we could be using Preact or React, we added an alias for `enzyme-adapter-react` (a library which does not currently exist) and ensured that it would resolve as the proper adapter based on which framework we're using.
 
 Enzyme's [installation instructions](https://enzymejs.github.io/enzyme/docs/installation/) guide you to create a setup file. Ours is included in our `jest.config.js` as such:
-```
+```js
     setupFilesAfterEnv: [
         // Configure enzyme for React testing. Must be run _after_ env is set up
         `${JEST_CONFIG_ROOT}/setup-files/enzyme.js`,
@@ -79,7 +79,7 @@ Enzyme's [installation instructions](https://enzymejs.github.io/enzyme/docs/inst
 ```
 
 And the actual file looks like:
-```
+```js
 // <root>/setup-files/enzyme.js
 
 // Enable preact/debug for all Jest tests. Shouldn't cause any issues for React tests.
@@ -107,7 +107,7 @@ So with all of these pieces added to our existing setup, we were now able to run
 While we aimed for getting every test to pass with both frameworks, we knew from the start that that would not be possible. Whether due to differences in how the Enzyme adapters work or in how the underlying frameworks function, aiming to have every single test block pass for both React and Preact was an infeasible goal. Moreover, trying to accomplish this would be quite frustrating for developers. For this reason, we augmented Jest's `describe` and `it` methods so that a given test (or block of tests) could be set up to only run in React or only in Preact. While we strive to use this as little as possible, there are times when it was unavoidable. In our codebase, they're called `.reactSkip` and `.preactSkip`.
 
 ### Implementation
-```
+```js
 // <root>/jest-config/setup-files/preact-setup.js
 const jestGlobals = require("@jest/globals");
 const isPreact = require("../helpers/isPreact");
@@ -128,7 +128,7 @@ it.reactSkip = !isPreact ? iSkip : it;
 ```
 
 And then in `jest.config.js`:
-```
+```js
 ...
     setupFilesAfterEnv: [
         // Note that this has to run before the enzyme setup.
@@ -139,7 +139,7 @@ And then in `jest.config.js`:
 ```
 
 Etsy is currently in the process of adopting TypeScript, and we don't want folks who try to use `.reactSkip` and `.preactSkip` to run into TS errors. To resolve that, we added to our project's `@types` directory a `jest.d.ts` file:
-```
+```ts
 declare namespace jest {
     interface It {
         /** Tests specified with this will not run in Preact mode */
@@ -161,7 +161,7 @@ This utilize the existing Jest types in the same way that `it.skip` or `describe
 
 Finally, critical infrastructure needs test coverage. We already have an existing folder of Jest "helper" files and tests to make sure that we aren't breaking our Jest infrastructure, so we added to that. Note that this file leans _very_ heavily on differences between the React and Preact API -- specifically whether `createPortal` exists. The goal is that if either of our skip functions (on `describe` or `it`) suddenly stops preventing tests from being run, this test file will have test failures.
 
-```
+```js
 // <js-root>/jest/__tests__/setup-preact.test.js
 /**
  * If a test in this file is failing, it means that the `preactSkip`/`reactSkip` helpers defined in
@@ -204,10 +204,10 @@ Note that this test file "abuses" several "knowns" about our test setup to provi
 
 ## Conclusion
 
-With all of this built out:
+With all of this built out we can:
 - easily run tests in both React and Preact mode
-- in either an IDE or through the command line
+- in an IDE or from the command line
 - exclude individual test cases or entire test blocks from being run in either Preact or React
-- feel confident that if our infrastructure starts breaking, it won't fail quietly -- specific tests will start failing to give us an opportunity to debug
+- feel confident that if our infrastructure starts breaking, it won't fail quietly -- specific tests will start failing to give us an opportunity to debug with purpose
 
 With all of this done, it was time to start actually start updating our tests so that they work for both frameworks. That work, however, will be covered in a followup post.
